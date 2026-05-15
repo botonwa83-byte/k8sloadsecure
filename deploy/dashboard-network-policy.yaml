@@ -1,0 +1,26 @@
+# Dashboard 网络隔离策略
+# 只允许 k8sgate 服务访问 Dashboard
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restrict-dashboard
+  namespace: kubernetes-dashboard
+spec:
+  podSelector:
+    matchLabels:
+      k8s-app: kubernetes-dashboard
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    # 允许 k8sgate 服务访问
+    - podSelector:
+        matchLabels:
+          app: k8sgate
+    # 允许同一命名空间内的服务访问
+    - namespaceSelector:
+        matchLabels:
+          name: kubernetes-dashboard
+    ports:
+    - protocol: TCP
+      port: 8443

@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +12,9 @@ import (
 )
 
 var auditChan = make(chan model.AuditLog, 1000)
+
+// auditCache 用于去重，避免短时间内重复记录相同操作
+var auditCache = sync.Map{}
 
 func init() {
 	go auditWorker()
@@ -44,14 +49,49 @@ func flushAuditLogs(logs []model.AuditLog) {
 	model.DB.Create(&logs)
 }
 
-// k8sPathRegex 解析 K8s API 路径
+// shouldLog 检查是否应该记录该操作（去重）
+func shouldLog(userID uint, method, path string) bool {
+	// 生成缓存键
+	key := fmt.Sprintf("%d:%s:%s", userID, method, path)
+	
+	// 检查是否已存在
+	if _, exists := auditCache.LoadOrStore(key, struct{}{}); exists {
+		return false
+	}
+	
+	// 30秒后自动删除缓存
+	go func() {
+		time.Sleep(30 * time.Second)
+		auditCache.Delete(key)
+	}()
+	
+	return true
+}
+
+// k8sPathRegex 解析标准 K8s API 路径
 // /api/v1/namespaces/{ns}/pods/{name}
 // /apis/apps/v1/namespaces/{ns}/deployments/{name}
 var k8sPathRegex = regexp.MustCompile(
 	`/(?:api|apis/[^/]+)/v[^/]+/(?:namespaces/([^/]+)/)?([^/]+)(?:/([^/]+))?`,
 )
 
+// dashboardPathRegex 解析 Dashboard 代理路径
+// /dashboard/api/v1/_raw/deployment/namespace/{ns}/name/{name}
+var dashboardPathRegex = regexp.MustCompile(
+	`/dashboard/api/v1/_raw/([^/]+)/namespace/([^/]+)/name/([^/]+)`,
+)
+
 func parseK8sPath(path string) (namespace, resourceType, resourceName string) {
+	// 先尝试匹配 Dashboard 路径格式
+	dashboardMatches := dashboardPathRegex.FindStringSubmatch(path)
+	if len(dashboardMatches) >= 4 {
+		resourceType = singularize(dashboardMatches[1])
+		namespace = dashboardMatches[2]
+		resourceName = dashboardMatches[3]
+		return
+	}
+	
+	// 再尝试匹配标准 K8s API 路径格式
 	matches := k8sPathRegex.FindStringSubmatch(path)
 	if len(matches) >= 3 {
 		namespace = matches[1]
@@ -111,8 +151,9 @@ func actionDetail(method, resourceType, resourceName string) string {
 
 func AuditLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 跳过非 dashboard 代理的请求和健康检查
 		path := c.Request.URL.Path
+		
+		// 跳过非 dashboard 代理的请求和健康检查
 		if !strings.HasPrefix(path, "/dashboard/") && !strings.HasPrefix(path, "/api/v1/proxy/") {
 			c.Next()
 			return
@@ -124,7 +165,23 @@ func AuditLog() gin.HandlerFunc {
 		username := GetUsername(c)
 		method := c.Request.Method
 
+		// 优化1：跳过 GET/HEAD 请求（只读操作不记录）
+		if method == "GET" || method == "HEAD" {
+			return
+		}
+
+		// 优化2：去重检查，避免短时间内重复记录相同操作
+		if !shouldLog(userID, method, path) {
+			return
+		}
+
 		namespace, resourceType, resourceName := parseK8sPath(path)
+		
+		// 优化3：跳过无法识别的资源类型
+		if resourceType == "" && resourceName == "" && namespace == "" {
+			return
+		}
+		
 		detail := actionDetail(method, resourceType, resourceName)
 
 		auditChan <- model.AuditLog{

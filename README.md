@@ -83,4 +83,26 @@ npm run dev
 ## 项目结构
 
 ```
-├── backend
+├── backend/           # Go 后端服务
+│   ├── handler/       # API 处理器
+│   ├── service/       # 业务逻辑层
+│   ├── k8s/           # K8s 客户端
+│   ├── middleware/    # 中间件
+│   ├── model/         # 数据模型
+│   └── pkg/           # 工具包
+├── frontend/          # Vue 前端应用
+│   ├── src/           # 源代码
+│   └── public/        # 静态资源
+├── deploy/            # 部署配置
+├── docs/              # 技术文档
+├── CHANGELOG.md       # 版本变更记录
+└── README.md          # 项目说明
+```
+
+## 许可证
+
+MIT License - 详见 [LICENSE](LICENSE)
+
+## 更新日志
+
+详见 [CHANGELOG.md](CHANGELOG.md)

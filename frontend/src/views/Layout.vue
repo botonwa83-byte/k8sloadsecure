@@ -33,6 +33,10 @@
             <el-icon><Folder /></el-icon>
             <template #title>项目管理</template>
           </el-menu-item>
+          <el-menu-item index="/roles">
+            <el-icon><Key /></el-icon>
+            <template #title>角色管理</template>
+          </el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="audit">
           <template #title>

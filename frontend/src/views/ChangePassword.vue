@@ -1,7 +1,12 @@
 <template>
   <div class="login-container">
     <div class="login-card">
-      <h2>修改密码</h2>
+      <div class="header">
+        <h2>修改密码</h2>
+        <button class="back-btn" @click="goBack">
+          <span class="back-icon">←</span>
+        </button>
+      </div>
       <el-form ref="formRef" :model="form" :rules="rules" @keyup.enter="handleSubmit">
         <el-form-item prop="old_password">
           <el-input v-model="form.old_password" type="password" placeholder="原密码" prefix-icon="Lock" size="large" show-password />
@@ -78,6 +83,10 @@ async function handleSubmit() {
     loading.value = false
   }
 }
+
+function goBack() {
+  router.push('/dashboard')
+}
 </script>
 
 <style scoped>
@@ -95,10 +104,32 @@ async function handleSubmit() {
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
-.login-card h2 {
-  text-align: center;
+.login-card .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 30px;
+}
+
+.login-card h2 {
+  margin: 0;
   color: #303133;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #606266;
+  padding: 5px 10px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.back-btn:hover {
+  background-color: #f5f5f5;
+  color: #409eff;
 }
 .tips {
   color: #909399;

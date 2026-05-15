@@ -64,6 +64,12 @@ const routes = [
         component: () => import('../views/GlobalStats.vue'),
         meta: { title: '全局统计', admin: true },
       },
+      {
+        path: 'roles',
+        name: 'RoleManage',
+        component: () => import('../views/RoleManage.vue'),
+        meta: { title: '角色管理', admin: true },
+      },
     ],
   },
 ]
