@@ -1,0 +1,46 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: k8sgate
+  namespace: k8sgate-system
+  labels:
+    app: k8sgate
+spec:
+  hosts:
+    - "k8sgate.wanfangdata.com.cn"
+  gateways:
+    - istio-system/default-gateway  # 根据实际网关名称调整
+  http:
+    # 后端 API 请求
+    - match:
+        - uri:
+            prefix: /api/
+      route:
+        - destination:
+            host: k8sgate-backend.k8sgate-system.svc.cluster.local
+            port:
+              number: 8080
+    # Dashboard 代理请求
+    - match:
+        - uri:
+            prefix: /dashboard/
+      route:
+        - destination:
+            host: k8sgate-backend.k8sgate-system.svc.cluster.local
+            port:
+              number: 8080
+    # 健康检查
+    - match:
+        - uri:
+            exact: /healthz
+      route:
+        - destination:
+            host: k8sgate-backend.k8sgate-system.svc.cluster.local
+            port:
+              number: 8080
+    # 前端静态文件（兜底规则）
+    - route:
+        - destination:
+            host: k8sgate-frontend.k8sgate-system.svc.cluster.local
+            port:
+              number: 80
