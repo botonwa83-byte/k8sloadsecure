@@ -8,7 +8,7 @@ VERSION ?= latest
 
 # 编译后端（交叉编译为 Linux amd64，适配 CentOS 7 部署）
 build-backend:
-	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../bin/k8sgate-backend ./main.go
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o k8sgate-backend ./main.go
 
 # 编译前端
 build-frontend:
@@ -16,14 +16,12 @@ build-frontend:
 
 build-all: build-backend build-frontend
 
-# ========== Docker 镜像 ==========
+# ========== Docker 镜像（先本地编译，再打包）==========
 
-# 构建后端镜像（多架构，适配 Linux amd64）
-docker-backend:
+docker-backend: build-backend
 	cd backend && docker build --platform linux/amd64 -t $(REGISTRY)/backend:$(VERSION) .
 
-# 构建前端镜像
-docker-frontend:
+docker-frontend: build-frontend
 	cd frontend && docker build --platform linux/amd64 -t $(REGISTRY)/frontend:$(VERSION) .
 
 docker-all: docker-backend docker-frontend
@@ -48,12 +46,16 @@ deploy:
 	kubectl apply -f deploy/frontend.yaml
 	kubectl apply -f deploy/virtualservice.yaml
 
+# ========== 清理 ==========
+
+clean:
+	rm -f backend/k8sgate-backend
+	rm -rf frontend/dist
+
 # ========== 开发模式 ==========
 
-# 本地运行后端
 dev-backend:
 	cd backend && go run main.go
 
-# 本地运行前端
 dev-frontend:
 	cd frontend && npm run dev

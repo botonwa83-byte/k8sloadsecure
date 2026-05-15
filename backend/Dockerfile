@@ -1,13 +1,7 @@
-FROM golang:1.22-alpine AS builder
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o k8sgate-backend ./main.go
-
+# 本地已交叉编译好二进制，直接打包
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates tzdata
 ENV TZ=Asia/Shanghai
-COPY --from=builder /app/k8sgate-backend /usr/local/bin/
+COPY k8sgate-backend /usr/local/bin/
 EXPOSE 8080
 ENTRYPOINT ["k8sgate-backend"]
