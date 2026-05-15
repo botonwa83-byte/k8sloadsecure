@@ -12,36 +12,31 @@ import (
 	"k8sgate/middleware"
 	"k8sgate/model"
 	"k8sgate/pkg"
+	"k8sgate/service"
 )
 
 func main() {
 	cfg := config.Load()
 
-	// 初始化数据库
 	model.InitDB(cfg.DSN())
-
-	// 初始化 JWT
 	pkg.InitJWT(cfg.JWTSecret)
-
-	// 初始化 K8s 客户端
 	k8sclient.InitClient()
 
-	// 初始化 K8s 资源（命名空间、ClusterRole、Admin SA）
 	if err := k8sclient.InitK8sResources(); err != nil {
 		log.Printf("Warning: failed to init K8s resources: %v (will retry later)", err)
 	}
 
-	// 创建默认管理员账号
 	ensureDefaultAdmin(cfg.PasswordMaxAge)
+
+	// 启动过期权限回收定时任务
+	go expirePermissionTicker()
 
 	r := gin.Default()
 
-	// 健康检查
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// 注册路由
 	registerRoutes(r, cfg)
 
 	log.Printf("K8sGate starting on port %d", cfg.ServerPort)
@@ -56,35 +51,36 @@ func registerRoutes(r *gin.Engine, cfg *config.Config) {
 	projectH := handler.NewProjectHandler()
 	auditH := handler.NewAuditHandler()
 	proxyH := handler.NewProxyHandler(cfg)
+	approvalH := handler.NewApprovalHandler()
 
 	v1 := r.Group("/api/v1")
 	{
-		// 公开接口
 		v1.POST("/auth/login", authH.Login)
 
-		// 需要登录的接口
 		auth := v1.Group("", middleware.AuthRequired())
 		{
 			auth.POST("/auth/logout", authH.Logout)
 			auth.PUT("/auth/password", authH.ChangePassword)
 			auth.GET("/auth/me", authH.Me)
 
-			// 审计日志（所有登录用户可访问，非管理员只能看自己的）
+			// 审计日志（developer只看自己的，global_viewer和admin看所有）
 			auth.GET("/audit/logs", auditH.Logs)
 			auth.GET("/audit/report", auditH.Report)
 			auth.GET("/audit/export", auditH.Export)
 
+			// 写权限申请（developer 使用）
+			auth.POST("/approval/submit", approvalH.Submit)
+			auth.GET("/approval/my-requests", approvalH.MyRequests)
+
 			// 管理员接口
 			admin := auth.Group("", middleware.AdminRequired())
 			{
-				// 用户管理
 				admin.GET("/users", userH.List)
 				admin.POST("/users", userH.Create)
 				admin.PUT("/users/:id", userH.Update)
 				admin.PUT("/users/:id/reset-password", userH.ResetPassword)
 				admin.DELETE("/users/:id", userH.Delete)
 
-				// 项目管理
 				admin.GET("/projects", projectH.List)
 				admin.POST("/projects", projectH.Create)
 				admin.GET("/projects/:id", projectH.Get)
@@ -93,21 +89,25 @@ func registerRoutes(r *gin.Engine, cfg *config.Config) {
 				admin.POST("/projects/:id/users", projectH.AssignUser)
 				admin.DELETE("/projects/:id/users/:user_id", projectH.RemoveUser)
 
-				// 命名空间列表（从 K8s 实时获取）
 				admin.GET("/namespaces", projectH.ListNamespaces)
 
-				// 全局统计和登录日志
 				admin.GET("/audit/stats", auditH.Stats)
 				admin.GET("/login-logs", auditH.LoginLogs)
+
+				// 审批管理
+				admin.GET("/approval/requests", approvalH.List)
+				admin.PUT("/approval/requests/:id", approvalH.Review)
 			}
 		}
 	}
 
-	// Dashboard 代理
 	dashboard := r.Group("/dashboard", middleware.AuthRequired(), middleware.AuditLog())
 	{
 		dashboard.Any("/*path", proxyH.Proxy)
 	}
+
+	// 公共统计接口（放在v1组内）
+	v1.GET("/stats/dashboard", middleware.AuthRequired(), auditH.DashboardStats)
 }
 
 func ensureDefaultAdmin(passwordMaxAge int) {
@@ -136,3 +136,14 @@ func ensureDefaultAdmin(passwordMaxAge int) {
 	}
 }
 
+// expirePermissionTicker 每小时检查并回收过期的写权限
+func expirePermissionTicker() {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		count := service.ExpireWritePermissions()
+		if count > 0 {
+			log.Printf("Expired %d write permissions", count)
+		}
+	}
+}

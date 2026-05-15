@@ -13,13 +13,13 @@ type CreateUserRequest struct {
 	Password    string `json:"password" binding:"required"`
 	DisplayName string `json:"display_name"`
 	Email       string `json:"email"`
-	Role        string `json:"role" binding:"required,oneof=viewer developer admin"`
+	Role        string `json:"role" binding:"required,oneof=developer global_viewer admin"`
 }
 
 type UpdateUserRequest struct {
 	DisplayName *string `json:"display_name"`
 	Email       *string `json:"email"`
-	Role        *string `json:"role" binding:"omitempty,oneof=viewer developer admin"`
+	Role        *string `json:"role" binding:"omitempty,oneof=developer global_viewer admin"`
 	Status      *string `json:"status" binding:"omitempty,oneof=active disabled"`
 }
 

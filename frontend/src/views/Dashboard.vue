@@ -52,23 +52,16 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getMe } from '../api/auth'
+import { getDashboardStats } from '../api/audit'
 
 const stats = ref({})
 const projects = ref([])
 
 onMounted(async () => {
   try {
-    const res = await getMe()
+    const res = await getDashboardStats()
+    stats.value = res.data
     projects.value = res.data.projects || []
-    // 简易统计，后续可扩展
-    const user = JSON.parse(sessionStorage.getItem('user') || '{}')
-    stats.value = {
-      namespace_count: new Set(projects.value.flatMap(p => p.namespaces)).size || '-',
-      project_count: projects.value.length || '-',
-      user_count: user.role === 'admin' ? '...' : '-',
-      today_ops: '...',
-    }
   } catch (e) {
     // handled
   }

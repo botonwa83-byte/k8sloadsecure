@@ -26,7 +26,7 @@ func InitDB(dsn string) {
 	sqlDB.SetMaxOpenConns(50)
 	sqlDB.SetMaxIdleConns(10)
 
-	err = DB.AutoMigrate(&User{}, &Project{}, &ProjectNamespace{}, &UserProject{}, &AuditLog{}, &LoginLog{})
+	err = DB.AutoMigrate(&User{}, &Project{}, &ProjectNamespace{}, &UserProject{}, &AuditLog{}, &LoginLog{}, &PermissionRequest{})
 	if err != nil {
 		log.Fatalf("failed to auto migrate: %v", err)
 	}

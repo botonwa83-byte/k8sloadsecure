@@ -12,7 +12,7 @@ type User struct {
 	PasswordHash      string         `gorm:"size:255;not null" json:"-"`
 	DisplayName       string         `gorm:"size:128;not null;default:''" json:"display_name"`
 	Email             string         `gorm:"size:255;not null;default:''" json:"email"`
-	Role              string         `gorm:"size:16;not null;default:'viewer'" json:"role"` // viewer, developer, admin
+	Role              string         `gorm:"size:20;not null;default:'developer'" json:"role"` // developer, global_viewer, admin
 	Status            string         `gorm:"size:16;not null;default:'active'" json:"status"` // active, disabled
 	PasswordChangedAt *time.Time     `json:"password_changed_at,omitempty"`
 	PasswordExpiresAt *time.Time     `json:"password_expires_at,omitempty"`

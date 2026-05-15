@@ -16,6 +16,12 @@ func NewAuditHandler() *AuditHandler {
 	return &AuditHandler{}
 }
 
+// canViewAll 管理员和全局只读可查看所有日志
+func canViewAll(c *gin.Context) bool {
+	role := middleware.GetRole(c)
+	return role == "admin" || role == "global_viewer"
+}
+
 func (h *AuditHandler) Logs(c *gin.Context) {
 	var q service.AuditLogQuery
 	if err := c.ShouldBindQuery(&q); err != nil {
@@ -23,8 +29,8 @@ func (h *AuditHandler) Logs(c *gin.Context) {
 		return
 	}
 
-	// 非管理员只能看自己的日志
-	if middleware.GetRole(c) != "admin" {
+	// developer 只能看自己的日志
+	if !canViewAll(c) {
 		q.UserID = middleware.GetUserID(c)
 	}
 
@@ -43,8 +49,8 @@ func (h *AuditHandler) Report(c *gin.Context) {
 		return
 	}
 
-	// 非管理员只能看自己的报告
-	if middleware.GetRole(c) != "admin" {
+	// developer 只能看自己的报告
+	if !canViewAll(c) {
 		q.UserID = middleware.GetUserID(c)
 	}
 	if q.UserID == 0 {
@@ -67,13 +73,12 @@ func (h *AuditHandler) Export(c *gin.Context) {
 		return
 	}
 
-	if middleware.GetRole(c) != "admin" {
+	if !canViewAll(c) {
 		q.UserID = middleware.GetUserID(c)
 	}
 
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", "attachment; filename=audit_logs.csv")
-	// 写入 BOM 以便 Excel 正确识别 UTF-8
 	c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
 	service.ExportAuditCSV(c.Writer, &q)
 }
@@ -86,6 +91,18 @@ func (h *AuditHandler) Stats(c *gin.Context) {
 	}
 
 	stats, err := service.GetGlobalStats(&q)
+	if err != nil {
+		pkg.Fail(c, http.StatusInternalServerError, 50001, "查询失败")
+		return
+	}
+	pkg.OK(c, stats)
+}
+
+func (h *AuditHandler) DashboardStats(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	role := middleware.GetRole(c)
+
+	stats, err := service.GetDashboardStats(userID, role)
 	if err != nil {
 		pkg.Fail(c, http.StatusInternalServerError, 50001, "查询失败")
 		return

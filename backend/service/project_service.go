@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 
+	"k8sgate/k8s"
 	"k8sgate/model"
 )
 
@@ -158,7 +159,7 @@ func DeleteProject(id uint) error {
 
 func AssignUserToProject(projectID uint, req *AssignUserRequest) error {
 	var project model.Project
-	if err := model.DB.First(&project, projectID).Error; err != nil {
+	if err := model.DB.Preload("Namespaces").First(&project, projectID).Error; err != nil {
 		return errors.New("项目不存在")
 	}
 
@@ -170,14 +171,29 @@ func AssignUserToProject(projectID uint, req *AssignUserRequest) error {
 	var existing model.UserProject
 	result := model.DB.Where("user_id = ? AND project_id = ?", req.UserID, projectID).First(&existing)
 	if result.Error == nil {
-		return model.DB.Model(&existing).Update("permission", req.Permission).Error
+		if err := model.DB.Model(&existing).Update("permission", req.Permission).Error; err != nil {
+			return err
+		}
+	} else {
+		if err := model.DB.Create(&model.UserProject{
+			UserID:     req.UserID,
+			ProjectID:  projectID,
+			Permission: req.Permission,
+		}).Error; err != nil {
+			return err
+		}
 	}
 
-	return model.DB.Create(&model.UserProject{
-		UserID:     req.UserID,
-		ProjectID:  projectID,
-		Permission: req.Permission,
-	}).Error
+	// 同步K8s权限
+	namespaces := make([]string, len(project.Namespaces))
+	for i, ns := range project.Namespaces {
+		namespaces[i] = ns.Namespace
+	}
+	if err := k8s.SyncRoleBindings(user.ID, user.Role, namespaces); err != nil {
+		return errors.New("同步K8s权限失败: " + err.Error())
+	}
+
+	return nil
 }
 
 func RemoveUserFromProject(projectID, userID uint) error {

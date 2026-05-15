@@ -40,17 +40,29 @@ func (h *ProxyHandler) Proxy(c *gin.Context) {
 		return
 	}
 
-	// 前置命名空间检查（非 Admin）
+	// 前置权限检查（非 Admin）
 	if role != "admin" {
 		ns := extractNamespace(c.Request.URL.Path)
-		if ns != "" && !contains(allowedNS, ns) {
-			pkg.Fail(c, http.StatusForbidden, 40301, "无权访问命名空间: "+ns)
-			return
-		}
-		// Viewer 不允许写操作
-		if role == "viewer" || h.isViewerPermission(userID, ns) {
+
+		// developer: 只能访问分配的命名空间
+		if role == "developer" {
+			if ns != "" && !contains(allowedNS, ns) {
+				pkg.Fail(c, http.StatusForbidden, 40301, "无权访问命名空间: "+ns)
+				return
+			}
+			// developer 默认只读，只有审批通过的项目才有写权限
 			if c.Request.Method != "GET" && c.Request.Method != "HEAD" {
-				pkg.Fail(c, http.StatusForbidden, 40301, "只读用户不允许写操作")
+				if !h.hasWritePermission(userID, ns) {
+					pkg.Fail(c, http.StatusForbidden, 40301, "无写权限，请先申请并等待管理员审批")
+					return
+				}
+			}
+		}
+
+		// global_viewer: 可访问所有命名空间，但只能读
+		if role == "global_viewer" {
+			if c.Request.Method != "GET" && c.Request.Method != "HEAD" {
+				pkg.Fail(c, http.StatusForbidden, 40301, "全局只读用户不允许写操作")
 				return
 			}
 		}
@@ -74,10 +86,12 @@ func (h *ProxyHandler) Proxy(c *gin.Context) {
 }
 
 func (h *ProxyHandler) getAllowedNamespaces(userID uint, role string) ([]string, error) {
-	if role == "admin" {
-		return nil, nil // admin 无限制
+	// admin 和 global_viewer 无限制
+	if role == "admin" || role == "global_viewer" {
+		return nil, nil
 	}
 
+	// developer: 只能访问分配项目的命名空间
 	var ups []model.UserProject
 	err := model.DB.Where("user_id = ?", userID).Preload("Project.Namespaces").Find(&ups).Error
 	if err != nil {
@@ -101,20 +115,20 @@ func (h *ProxyHandler) getAllowedNamespaces(userID uint, role string) ([]string,
 	return result, nil
 }
 
-func (h *ProxyHandler) isViewerPermission(userID uint, namespace string) bool {
+// hasWritePermission 检查 developer 对某个命名空间是否有写权限（审批通过的）
+func (h *ProxyHandler) hasWritePermission(userID uint, namespace string) bool {
 	if namespace == "" {
 		return false
 	}
 	var count int64
 	model.DB.Model(&model.UserProject{}).
 		Joins("JOIN project_namespaces ON project_namespaces.project_id = user_projects.project_id").
-		Where("user_projects.user_id = ? AND project_namespaces.namespace = ? AND user_projects.permission = 'read'", userID, namespace).
+		Where("user_projects.user_id = ? AND project_namespaces.namespace = ? AND user_projects.permission = 'readwrite'", userID, namespace).
 		Count(&count)
 	return count > 0
 }
 
 func extractNamespace(path string) string {
-	// 简单从路径中提取 namespaces/{ns}
 	parts := splitPath(path)
 	for i, p := range parts {
 		if p == "namespaces" && i+1 < len(parts) {

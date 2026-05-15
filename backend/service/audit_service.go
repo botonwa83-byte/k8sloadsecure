@@ -32,6 +32,61 @@ type StatsQuery struct {
 	EndTime   string `form:"end_time" binding:"required"`
 }
 
+// GetDashboardStats 获取仪表盘统计数据（公共接口，不需要管理员权限）
+func GetDashboardStats(userID uint, role string) (map[string]interface{}, error) {
+	// 用户总数
+	var userCount int64
+	model.DB.Model(&model.User{}).Count(&userCount)
+
+	// 项目总数
+	var projectCount int64
+	model.DB.Model(&model.Project{}).Count(&projectCount)
+
+	// 今日操作数
+	today := time.Now().Format("2006-01-02")
+	var todayOps int64
+	model.DB.Model(&model.AuditLog{}).Where("created_at >= ?", today).Count(&todayOps)
+
+	// 用户的项目列表
+	var ups []model.UserProject
+	model.DB.Where("user_id = ?", userID).Preload("Project.Namespaces").Find(&ups)
+
+	type ProjectInfo struct {
+		ProjectID   uint     `json:"project_id"`
+		ProjectName string   `json:"project_name"`
+		Permission  string   `json:"permission"`
+		Namespaces  []string `json:"namespaces"`
+	}
+	projects := make([]ProjectInfo, 0, len(ups))
+	nsSet := make(map[string]bool)
+	for _, up := range ups {
+		if up.Project == nil {
+			continue
+		}
+		nsList := make([]string, len(up.Project.Namespaces))
+		for i, ns := range up.Project.Namespaces {
+			nsList[i] = ns.Namespace
+			nsSet[ns.Namespace] = true
+		}
+		projects = append(projects, ProjectInfo{
+			ProjectID:   up.ProjectID,
+			ProjectName: up.Project.Name,
+			Permission:  up.Permission,
+			Namespaces:  nsList,
+		})
+	}
+
+	result := map[string]interface{}{
+		"user_count":      userCount,
+		"project_count":   projectCount,
+		"namespace_count": len(nsSet),
+		"today_ops":       todayOps,
+		"projects":        projects,
+	}
+
+	return result, nil
+}
+
 func GetAuditLogs(q *AuditLogQuery) (int64, []model.AuditLog, error) {
 	var total int64
 	var logs []model.AuditLog

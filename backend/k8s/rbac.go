@@ -118,11 +118,13 @@ func SyncRoleBindings(userID uint, role string, namespaces []string) error {
 		return nil // admin 使用 admin SA
 	}
 
-	clusterRole := ViewerClusterRole
-	if role == "developer" {
-		clusterRole = DevClusterRole
+	// global_viewer: 全局只读，使用 ClusterRoleBinding
+	if role == "global_viewer" {
+		return ensureGlobalViewerBinding(ctx, saName)
 	}
 
+	// developer: 在指定命名空间创建 RoleBinding
+	clusterRole := DevClusterRole
 	for _, ns := range namespaces {
 		rb := &rbacv1.RoleBinding{
 			ObjectMeta: metav1.ObjectMeta{
@@ -160,8 +162,39 @@ func SyncRoleBindings(userID uint, role string, namespaces []string) error {
 	return nil
 }
 
+// ensureGlobalViewerBinding 为 global_viewer 创建 ClusterRoleBinding
+func ensureGlobalViewerBinding(ctx context.Context, saName string) error {
+	crbName := saName
+	_, err := clientset.RbacV1().ClusterRoleBindings().Get(ctx, crbName, metav1.GetOptions{})
+	if errors.IsNotFound(err) {
+		crb := &rbacv1.ClusterRoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   crbName,
+				Labels: map[string]string{"app": "k8sgate"},
+			},
+			Subjects: []rbacv1.Subject{
+				{
+					Kind:      "ServiceAccount",
+					Name:      saName,
+					Namespace: SystemNamespace,
+				},
+			},
+			RoleRef: rbacv1.RoleRef{
+				APIGroup: "rbac.authorization.k8s.io",
+				Kind:     "ClusterRole",
+				Name:     ViewerClusterRole,
+			},
+		}
+		_, err = clientset.RbacV1().ClusterRoleBindings().Create(ctx, crb, metav1.CreateOptions{})
+	}
+	return err
+}
+
 // GetTokenForUser 获取用户 ServiceAccount 的 Token
 func GetTokenForUser(userID uint, role string) (string, error) {
+	if !available {
+		return "mock-token-for-dev", nil
+	}
 	ctx := context.Background()
 
 	saName := AdminSAName
@@ -270,6 +303,9 @@ func EnsureNamespace() error {
 
 // InitK8sResources 初始化所有 K8s 资源
 func InitK8sResources() error {
+	if !available {
+		return fmt.Errorf("K8s not available, skipping resource init")
+	}
 	if err := EnsureNamespace(); err != nil {
 		return fmt.Errorf("ensure namespace: %v", err)
 	}

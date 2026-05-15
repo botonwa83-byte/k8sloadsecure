@@ -16,8 +16,8 @@
       <el-table-column prop="email" label="邮箱" />
       <el-table-column prop="role" label="角色" width="100">
         <template #default="{ row }">
-          <el-tag :type="{ admin: 'danger', developer: '', viewer: 'info' }[row.role]" size="small">
-            {{ { admin: '管理员', developer: '开发者', viewer: '只读' }[row.role] }}
+          <el-tag :type="{ admin: 'danger', developer: '', global_viewer: 'info' }[row.role]" size="small">
+            {{ { admin: '管理员', developer: '开发者', global_viewer: '只读' }[row.role] }}
           </el-tag>
         </template>
       </el-table-column>
@@ -73,7 +73,7 @@
         </el-form-item>
         <el-form-item label="角色" prop="role">
           <el-select v-model="form.role" style="width: 100%">
-            <el-option label="只读" value="viewer" />
+            <el-option label="只读" value="global_viewer" />
             <el-option label="开发者" value="developer" />
             <el-option label="管理员" value="admin" />
           </el-select>
@@ -120,7 +120,7 @@ const query = reactive({ page: 1, page_size: 20, keyword: '' })
 const dialogVisible = ref(false)
 const editingUser = ref(null)
 const formRef = ref(null)
-const form = reactive({ username: '', password: '', display_name: '', email: '', role: 'viewer', status: 'active' })
+const form = reactive({ username: '', password: '', display_name: '', email: '', role: 'global_viewer', status: 'active' })
 
 const resetVisible = ref(false)
 const resetFormRef = ref(null)
@@ -154,7 +154,7 @@ function showDialog(user) {
   if (user) {
     Object.assign(form, { username: user.username, password: '', display_name: user.display_name, email: user.email, role: user.role, status: user.status })
   } else {
-    Object.assign(form, { username: '', password: '', display_name: '', email: '', role: 'viewer', status: 'active' })
+    Object.assign(form, { username: '', password: '', display_name: '', email: '', role: 'global_viewer', status: 'active' })
   }
   dialogVisible.value = true
 }

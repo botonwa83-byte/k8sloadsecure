@@ -12,6 +12,10 @@ export function getGlobalStats(params) {
   return request.get('/audit/stats', { params })
 }
 
+export function getDashboardStats() {
+  return request.get('/stats/dashboard')
+}
+
 export function getLoginLogs(params) {
   return request.get('/login-logs', { params })
 }

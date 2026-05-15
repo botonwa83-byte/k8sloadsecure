@@ -125,7 +125,7 @@ const rules = {
 const userDialogVisible = ref(false)
 const currentProjectId = ref(null)
 const projectUsers = ref([])
-const assignForm = reactive({ user_id: null, permission: 'readwrite' })
+const assignForm = reactive({ user_id: null, permission: 'read' })
 
 onMounted(async () => {
   loadData()
