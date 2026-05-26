@@ -53,7 +53,7 @@
                   <el-tag size="small" type="success" style="margin: 1px">删除</el-tag>
                 </template>
                 <template v-else>
-                  <el-tag size="small" type="info" style="margin: 1px">查看</el-tag>
+                  <el-tag size="small" type="success" style="margin: 1px">查看</el-tag>
                   <el-tag size="small" type="danger" style="margin: 1px" effect="plain">创建</el-tag>
                   <el-tag size="small" type="danger" style="margin: 1px" effect="plain">修改</el-tag>
                   <el-tag size="small" type="danger" style="margin: 1px" effect="plain">删除</el-tag>
