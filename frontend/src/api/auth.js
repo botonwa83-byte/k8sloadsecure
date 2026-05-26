@@ -15,3 +15,7 @@ export function changePassword(data) {
 export function getMe() {
   return request.get('/auth/me')
 }
+
+export function getMyNamespaces() {
+  return request.get('/my/namespaces')
+}

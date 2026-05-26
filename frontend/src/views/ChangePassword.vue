@@ -85,7 +85,7 @@ async function handleSubmit() {
 }
 
 function goBack() {
-  router.push('/dashboard')
+  router.push('/overview')
 }
 </script>
 

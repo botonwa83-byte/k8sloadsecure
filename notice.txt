@@ -1,0 +1,79 @@
+ 一键部署（推荐）                                                                            
+                                                                                              
+  # 前提：先配置 SSH 免密登录（只需做一次）                                                   
+  ssh-copy-id root@10.10.184.243                                                              
+                                                                                              
+  # 然后每次部署只需一条命令                                                                  
+  make deploy-test                                                                            
+
+  这条命令会自动完成所有事情：编译 → 打包 → 上传 → 部署 → 重启。                              
+                                                                                              
+  ---                                                                                         
+  分步操作（如果想看清每一步）                                                                
+                                                                                              
+  第 1 步：构建打包（在你的 Mac 上）
+
+  make package
+
+  这一步会：
+  - 交叉编译后端为 linux/amd64 二进制
+  - 构建前端 dist
+  - 打包成 release/k8sloadsecure-latest.tar.gz
+  - 自动校验二进制架构是否正确
+
+  第 2 步：上传到服务器
+
+  scp release/k8sloadsecure-latest.tar.gz root@10.10.184.243:/tmp/
+
+  输入密码 K8s@node1。
+
+  第 3 步：SSH 到服务器执行部署
+
+  ssh root@10.10.184.243
+
+  输入密码后，在服务器上执行：
+
+  rm -rf /opt/k8sgate-deploy
+  mkdir -p /opt/k8sgate-deploy
+  tar -xzf /tmp/k8sloadsecure-latest.tar.gz -C /opt/k8sgate-deploy --strip-components=1
+  cd /opt/k8sgate-deploy
+  bash deploy/deploy-test.sh
+
+  第 4 步：验证
+
+  部署脚本执行完会自动做健康检查。你也可以手动确认：
+
+  # 在服务器上
+  cat /opt/k8sgate/VERSION              # 确认版本号和 git commit
+  curl http://localhost:8080/healthz     # 后端健康检查
+  systemctl status k8sgate-backend      # 后端服务状态
+  systemctl status k8sgate-frontend     # 前端服务状态
+
+  然后浏览器访问 http://10.10.184.243 验证功能。
+
+  ---
+  如果只改了后端代码（快速更新）
+
+  # Mac 上编译
+  cd backend
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o k8sgate-backend .
+
+  # 上传
+  scp k8sgate-backend root@10.10.184.243:/tmp/
+
+  # 服务器上替换重启
+  ssh root@10.10.184.243 'systemctl stop k8sgate-backend && \
+    cp -f /tmp/k8sgate-backend /opt/k8sgate/k8sgate-backend && \
+    chmod +x /opt/k8sgate/k8sgate-backend && \
+    systemctl start k8sgate-backend'
+
+  如果只改了前端代码（快速更新）
+
+  # Mac 上构建
+  cd frontend && npm run build
+
+  # 上传
+  scp -r dist/* root@10.10.184.243:/opt/k8sgate/dist/
+
+  # 服务器上重启 nginx
+  ssh root@10.10.184.243 'systemctl restart k8sgate-frontend'

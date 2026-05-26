@@ -7,10 +7,16 @@ import (
 	"k8sgate/model"
 )
 
+type ProjectUserAssign struct {
+	UserID     uint   `json:"user_id"`
+	Permission string `json:"permission"` // read, readwrite
+}
+
 type CreateProjectRequest struct {
-	Name        string   `json:"name" binding:"required"`
-	Description string   `json:"description"`
-	Namespaces  []string `json:"namespaces" binding:"required,min=1"`
+	Name        string             `json:"name" binding:"required"`
+	Description string             `json:"description"`
+	Namespaces  []string           `json:"namespaces" binding:"required,min=1"`
+	Users       []ProjectUserAssign `json:"users"`
 }
 
 type UpdateProjectRequest struct {
@@ -52,7 +58,23 @@ func CreateProject(req *CreateProjectRequest) (*model.Project, error) {
 		})
 	}
 
-	model.DB.Preload("Namespaces").First(&project, project.ID)
+	// 创建项目时分配用户权限
+	for _, u := range req.Users {
+		if u.UserID == 0 {
+			continue
+		}
+		perm := u.Permission
+		if perm == "" {
+			perm = "read"
+		}
+		model.DB.Create(&model.UserProject{
+			UserID:     u.UserID,
+			ProjectID:  project.ID,
+			Permission: perm,
+		})
+	}
+
+	model.DB.Preload("Namespaces").Preload("Users.User").First(&project, project.ID)
 	return &project, nil
 }
 
@@ -85,15 +107,28 @@ func GetProjectList(q *ProjectListQuery) (int64, []map[string]interface{}, error
 			namespaces[j] = ns.Namespace
 		}
 
-		var userCount int64
-		model.DB.Model(&model.UserProject{}).Where("project_id = ?", p.ID).Count(&userCount)
+		var userProjects []model.UserProject
+		model.DB.Where("project_id = ?", p.ID).Preload("User").Find(&userProjects)
+
+		users := make([]map[string]interface{}, 0, len(userProjects))
+		for _, up := range userProjects {
+			if up.User != nil {
+				users = append(users, map[string]interface{}{
+					"user_id":      up.UserID,
+					"username":     up.User.Username,
+					"display_name": up.User.DisplayName,
+					"permission":   up.Permission,
+				})
+			}
+		}
 
 		result[i] = map[string]interface{}{
 			"id":          p.ID,
 			"name":        p.Name,
 			"description": p.Description,
 			"namespaces":  namespaces,
-			"user_count":  userCount,
+			"users":       users,
+			"user_count":  len(users),
 			"created_at":  p.CreatedAt,
 			"updated_at":  p.UpdatedAt,
 		}

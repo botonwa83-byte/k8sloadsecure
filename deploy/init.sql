@@ -2,8 +2,7 @@ CREATE DATABASE IF NOT EXISTS `k8sgate` DEFAULT CHARACTER SET utf8mb4 COLLATE ut
 
 USE `k8sgate`;
 
--- GORM AutoMigrate 会自动创建表，此文件作为参考和备份
--- 如果需要手动建表，可以执行以下 SQL
+-- GORM AutoMigrate 会自动创建表，此文件作为参考和手动初始化备份
 
 CREATE TABLE IF NOT EXISTS `users` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -11,7 +10,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `password_hash` varchar(255) NOT NULL,
   `display_name` varchar(128) NOT NULL DEFAULT '',
   `email` varchar(255) NOT NULL DEFAULT '',
-  `role` varchar(16) NOT NULL DEFAULT 'viewer',
+  `role` varchar(20) NOT NULL DEFAULT 'developer',
+  `remark` varchar(512) NOT NULL DEFAULT '',
   `status` varchar(16) NOT NULL DEFAULT 'active',
   `password_changed_at` datetime DEFAULT NULL,
   `password_expires_at` datetime DEFAULT NULL,
@@ -22,8 +22,6 @@ CREATE TABLE IF NOT EXISTS `users` (
   `deleted_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_username` (`username`),
-  KEY `idx_role` (`role`),
-  KEY `idx_status` (`status`),
   KEY `idx_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -43,8 +41,7 @@ CREATE TABLE IF NOT EXISTS `project_namespaces` (
   `namespace` varchar(253) NOT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_project_ns` (`project_id`, `namespace`),
-  KEY `idx_namespace` (`namespace`)
+  UNIQUE KEY `uk_project_ns` (`project_id`, `namespace`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `user_projects` (
@@ -54,8 +51,7 @@ CREATE TABLE IF NOT EXISTS `user_projects` (
   `permission` varchar(16) NOT NULL DEFAULT 'read',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_project` (`user_id`, `project_id`),
-  KEY `idx_project_id` (`project_id`)
+  UNIQUE KEY `uk_user_project` (`user_id`, `project_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `audit_logs` (
@@ -75,9 +71,7 @@ CREATE TABLE IF NOT EXISTS `audit_logs` (
   KEY `idx_user_id` (`user_id`),
   KEY `idx_username` (`username`),
   KEY `idx_created_at` (`created_at`),
-  KEY `idx_action` (`action`),
-  KEY `idx_namespace` (`namespace`),
-  KEY `idx_user_created` (`user_id`, `created_at`)
+  KEY `idx_namespace` (`namespace`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `login_logs` (
@@ -89,51 +83,25 @@ CREATE TABLE IF NOT EXISTS `login_logs` (
   `reason` varchar(255) NOT NULL DEFAULT '',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_user_id` (`user_id`),
   KEY `idx_username` (`username`),
-  KEY `idx_created_at` (`created_at`),
-  KEY `idx_result` (`result`)
+  KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 审计日志归档表（结构与 audit_logs 相同）
-CREATE TABLE IF NOT EXISTS `audit_logs_archive` LIKE `audit_logs`;
-
--- 角色表
-CREATE TABLE IF NOT EXISTS `roles` (
+CREATE TABLE IF NOT EXISTS `permission_requests` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `name` varchar(64) NOT NULL,
-  `description` varchar(256) NOT NULL DEFAULT '',
-  `type` varchar(32) NOT NULL DEFAULT 'custom',
-  `parent_id` bigint(20) unsigned DEFAULT NULL,
+  `user_id` bigint(20) unsigned NOT NULL,
+  `username` varchar(64) NOT NULL DEFAULT '',
+  `project_id` bigint(20) unsigned NOT NULL,
+  `reason` varchar(512) NOT NULL DEFAULT '',
+  `status` varchar(16) NOT NULL DEFAULT 'pending',
+  `reviewer_id` bigint(20) unsigned DEFAULT NULL,
+  `reviewer` varchar(64) NOT NULL DEFAULT '',
+  `review_note` varchar(512) NOT NULL DEFAULT '',
+  `expires_at` datetime DEFAULT NULL,
+  `reviewed_at` datetime DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_role_name` (`name`),
-  KEY `idx_parent_id` (`parent_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 角色权限表
-CREATE TABLE IF NOT EXISTS `role_permissions` (
-  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `role_id` bigint(20) unsigned NOT NULL,
-  `resource` varchar(64) NOT NULL,
-  `actions` varchar(128) NOT NULL,
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_role_resource` (`role_id`, `resource`),
-  KEY `idx_role_id` (`role_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 用户角色关联表
-CREATE TABLE IF NOT EXISTS `user_roles` (
-  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `user_id` bigint(20) unsigned NOT NULL,
-  `role_id` bigint(20) unsigned NOT NULL,
-  `project_id` bigint(20) unsigned DEFAULT NULL,
-  `expires_at` datetime DEFAULT NULL,
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_role_project` (`user_id`, `role_id`, `project_id`),
   KEY `idx_user_id` (`user_id`),
-  KEY `idx_role_id` (`role_id`)
+  KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

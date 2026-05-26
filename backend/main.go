@@ -27,12 +27,15 @@ func main() {
 	}
 
 	ensureDefaultAdmin(cfg.PasswordMaxAge)
-	ensureSystemRoles()
 
 	// 启动过期权限回收定时任务
 	go expirePermissionTicker()
 
 	r := gin.Default()
+
+	// 信任代理，确保获取真实客户端IP
+	r.ForwardedByClientIP = true
+	r.SetTrustedProxies([]string{"127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
 
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
@@ -53,7 +56,6 @@ func registerRoutes(r *gin.Engine, cfg *config.Config) {
 	auditH := handler.NewAuditHandler()
 	proxyH := handler.NewProxyHandler(cfg)
 	approvalH := handler.NewApprovalHandler()
-	roleH := &handler.RoleHandler{}
 
 	v1 := r.Group("/api/v1")
 	{
@@ -65,7 +67,7 @@ func registerRoutes(r *gin.Engine, cfg *config.Config) {
 			auth.PUT("/auth/password", authH.ChangePassword)
 			auth.GET("/auth/me", authH.Me)
 
-			// 审计日志（developer只看自己的，global_viewer和admin看所有）
+			// 审计日志（developer只看自己的，admin看所有）
 			auth.GET("/audit/logs", auditH.Logs)
 			auth.GET("/audit/report", auditH.Report)
 			auth.GET("/audit/export", auditH.Export)
@@ -99,19 +101,12 @@ func registerRoutes(r *gin.Engine, cfg *config.Config) {
 				// 审批管理
 				admin.GET("/approval/requests", approvalH.List)
 				admin.PUT("/approval/requests/:id", approvalH.Review)
-
-				// 角色管理
-				admin.GET("/roles", roleH.ListRoles)
-				admin.POST("/roles", roleH.CreateRole)
-				admin.GET("/roles/:id", roleH.GetRole)
-				admin.PUT("/roles/:id", roleH.UpdateRole)
-				admin.DELETE("/roles/:id", roleH.DeleteRole)
-
-				// 用户角色管理
-				admin.GET("/user-roles/:user_id", roleH.GetUserRoles)
-				admin.POST("/user-roles/:user_id", roleH.AssignRole)
-				admin.DELETE("/user-roles/:user_id/:role_id", roleH.RemoveRole)
 			}
+
+			// Dashboard 状态检查
+			auth.GET("/dashboard/status", proxyH.Status)
+			// 当前用户可访问的命名空间
+			auth.GET("/my/namespaces", proxyH.MyNamespaces)
 		}
 	}
 
@@ -148,114 +143,6 @@ func ensureDefaultAdmin(passwordMaxAge int) {
 	} else {
 		log.Println("Default admin created: admin / Admin@123")
 	}
-}
-
-func ensureSystemRoles() {
-	var count int64
-	model.DB.Model(&model.Role{}).Where("type = ?", "system").Count(&count)
-	if count > 0 {
-		return
-	}
-
-	roles := []model.Role{
-		{Name: "super_admin", Description: "超级管理员", Type: "system"},
-		{Name: "admin", Description: "管理员", Type: "system", ParentID: 1},
-		{Name: "security_admin", Description: "安全管理员", Type: "system", ParentID: 2},
-		{Name: "ops_admin", Description: "运维管理员", Type: "system", ParentID: 2},
-		{Name: "global_viewer", Description: "全局只读", Type: "system"},
-		{Name: "project_admin", Description: "项目管理员", Type: "system", ParentID: 2},
-		{Name: "project_developer", Description: "项目开发者", Type: "system", ParentID: 6},
-		{Name: "project_viewer", Description: "项目查看者", Type: "system", ParentID: 6},
-		{Name: "project_operator", Description: "项目运维", Type: "system", ParentID: 6},
-	}
-
-	for _, role := range roles {
-		if err := model.DB.Create(&role).Error; err != nil {
-			log.Printf("Warning: failed to create role %s: %v", role.Name, err)
-		}
-	}
-
-	permissions := []model.RolePermission{
-		// super_admin: 所有权限
-		{RoleID: 1, Resource: "*", Actions: "[\"*\"]"},
-		// admin: 大部分权限
-		{RoleID: 2, Resource: "user", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 2, Resource: "role", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 2, Resource: "project", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 2, Resource: "namespace", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 2, Resource: "pod", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 2, Resource: "deployment", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 2, Resource: "service", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 2, Resource: "configmap", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 2, Resource: "secret", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 2, Resource: "audit", Actions: "[\"view\",\"create\",\"update\",\"delete\",\"export\"]"},
-		{RoleID: 2, Resource: "approval", Actions: "[\"view\",\"approve\"]"},
-		// security_admin: 审计和权限管理
-		{RoleID: 3, Resource: "user", Actions: "[\"view\"]"},
-		{RoleID: 3, Resource: "role", Actions: "[\"view\"]"},
-		{RoleID: 3, Resource: "audit", Actions: "[\"view\",\"export\"]"},
-		{RoleID: 3, Resource: "approval", Actions: "[\"view\",\"approve\"]"},
-		// ops_admin: K8s资源管理
-		{RoleID: 4, Resource: "namespace", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 4, Resource: "pod", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 4, Resource: "deployment", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 4, Resource: "service", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 4, Resource: "configmap", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 4, Resource: "secret", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 4, Resource: "audit", Actions: "[\"view\"]"},
-		// global_viewer: 全局只读
-		{RoleID: 5, Resource: "user", Actions: "[\"view\"]"},
-		{RoleID: 5, Resource: "role", Actions: "[\"view\"]"},
-		{RoleID: 5, Resource: "project", Actions: "[\"view\"]"},
-		{RoleID: 5, Resource: "namespace", Actions: "[\"view\"]"},
-		{RoleID: 5, Resource: "pod", Actions: "[\"view\"]"},
-		{RoleID: 5, Resource: "deployment", Actions: "[\"view\"]"},
-		{RoleID: 5, Resource: "service", Actions: "[\"view\"]"},
-		{RoleID: 5, Resource: "configmap", Actions: "[\"view\"]"},
-		{RoleID: 5, Resource: "secret", Actions: "[\"view\"]"},
-		{RoleID: 5, Resource: "audit", Actions: "[\"view\",\"export\"]"},
-		// project_admin: 项目内全部权限
-		{RoleID: 6, Resource: "project", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 6, Resource: "namespace", Actions: "[\"view\"]"},
-		{RoleID: 6, Resource: "pod", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 6, Resource: "deployment", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 6, Resource: "service", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 6, Resource: "configmap", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 6, Resource: "secret", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		// project_developer: 开发相关权限
-		{RoleID: 7, Resource: "project", Actions: "[\"view\"]"},
-		{RoleID: 7, Resource: "namespace", Actions: "[\"view\"]"},
-		{RoleID: 7, Resource: "pod", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 7, Resource: "deployment", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 7, Resource: "service", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 7, Resource: "configmap", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 7, Resource: "secret", Actions: "[\"view\"]"},
-		{RoleID: 7, Resource: "approval", Actions: "[\"view\"]"},
-		// project_viewer: 只读
-		{RoleID: 8, Resource: "project", Actions: "[\"view\"]"},
-		{RoleID: 8, Resource: "namespace", Actions: "[\"view\"]"},
-		{RoleID: 8, Resource: "pod", Actions: "[\"view\"]"},
-		{RoleID: 8, Resource: "deployment", Actions: "[\"view\"]"},
-		{RoleID: 8, Resource: "service", Actions: "[\"view\"]"},
-		{RoleID: 8, Resource: "configmap", Actions: "[\"view\"]"},
-		{RoleID: 8, Resource: "secret", Actions: "[\"view\"]"},
-		// project_operator: 运维相关权限
-		{RoleID: 9, Resource: "project", Actions: "[\"view\"]"},
-		{RoleID: 9, Resource: "namespace", Actions: "[\"view\"]"},
-		{RoleID: 9, Resource: "pod", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 9, Resource: "deployment", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 9, Resource: "service", Actions: "[\"view\",\"create\",\"update\",\"delete\"]"},
-		{RoleID: 9, Resource: "configmap", Actions: "[\"view\"]"},
-		{RoleID: 9, Resource: "secret", Actions: "[\"view\"]"},
-	}
-
-	for _, perm := range permissions {
-		if err := model.DB.Create(&perm).Error; err != nil {
-			log.Printf("Warning: failed to create permission for role %d: %v", perm.RoleID, err)
-		}
-	}
-
-	log.Println("System roles created successfully")
 }
 
 // expirePermissionTicker 每小时检查并回收过期的写权限

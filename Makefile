@@ -1,14 +1,18 @@
-.PHONY: build-backend build-frontend build-all docker-backend docker-frontend docker-all deploy
+.PHONY: build-backend build-frontend build-all docker-backend docker-frontend docker-all deploy package deploy-test
 
 # 镜像仓库地址，按实际修改
 REGISTRY ?= registry.wanfangdata.com.cn/k8sgate
 VERSION ?= latest
 
+# 测试环境
+TEST_HOST ?= 10.10.184.243
+TEST_USER ?= root
+
 # ========== 本地编译 ==========
 
-# 编译后端（交叉编译为 Linux amd64，适配 CentOS 7 部署）
+# 编译后端（交叉编译为 Linux amd64）
 build-backend:
-	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o k8sgate-backend ./main.go
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o k8sgate-backend .
 
 # 编译前端
 build-frontend:
@@ -45,6 +49,26 @@ deploy:
 	kubectl apply -f deploy/backend.yaml
 	kubectl apply -f deploy/frontend.yaml
 	kubectl apply -f deploy/virtualservice.yaml
+
+# ========== 测试环境部署（一键）==========
+
+# 构建 + 打包
+package:
+	bash package.sh
+
+# 构建 + 打包 + 上传 + 部署
+deploy-test: package
+	@echo ""
+	@echo "[deploy] 上传到 $(TEST_HOST)..."
+	@LATEST=$$(readlink release/k8sloadsecure-latest.tar.gz); \
+	scp "release/$$LATEST" $(TEST_USER)@$(TEST_HOST):/tmp/k8sloadsecure.tar.gz
+	@echo "[deploy] 解压并执行部署脚本..."
+	@ssh $(TEST_USER)@$(TEST_HOST) '\
+		rm -rf /opt/k8sgate-deploy && \
+		mkdir -p /opt/k8sgate-deploy && \
+		tar -xzf /tmp/k8sloadsecure.tar.gz -C /opt/k8sgate-deploy --strip-components=1 && \
+		cd /opt/k8sgate-deploy && \
+		bash deploy/deploy-test.sh'
 
 # ========== 清理 ==========
 

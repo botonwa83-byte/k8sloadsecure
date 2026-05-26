@@ -12,13 +12,17 @@
         active-text-color="#409eff"
         :collapse="isCollapse"
       >
-        <el-menu-item index="/dashboard">
+        <el-menu-item index="/overview">
           <el-icon><Monitor /></el-icon>
           <template #title>集群概览</template>
         </el-menu-item>
         <el-menu-item index="/k8s-dashboard">
           <el-icon><Platform /></el-icon>
           <template #title>K8s Dashboard</template>
+        </el-menu-item>
+        <el-menu-item v-if="user?.role !== 'admin'" index="/my-permissions">
+          <el-icon><Key /></el-icon>
+          <template #title>我的权限</template>
         </el-menu-item>
         <el-sub-menu v-if="user?.role === 'admin'" index="admin">
           <template #title>
@@ -32,10 +36,6 @@
           <el-menu-item index="/projects">
             <el-icon><Folder /></el-icon>
             <template #title>项目管理</template>
-          </el-menu-item>
-          <el-menu-item index="/roles">
-            <el-icon><Key /></el-icon>
-            <template #title>角色管理</template>
           </el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="audit">

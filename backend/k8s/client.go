@@ -20,11 +20,27 @@ func InitClient() {
 	// 优先使用集群内配置
 	restConfig, err = rest.InClusterConfig()
 	if err != nil {
-		// 本地开发：尝试 kubeconfig
+		// 集群外运行：尝试 kubeconfig
 		kubeconfig := os.Getenv("KUBECONFIG")
 		if kubeconfig == "" {
-			home, _ := os.UserHomeDir()
-			kubeconfig = filepath.Join(home, ".kube", "config")
+			home, homeErr := os.UserHomeDir()
+			if homeErr != nil || home == "" {
+				// systemd 环境下 HOME 可能未设置，尝试常见路径
+				candidates := []string{"/root/.kube/config", "/home/" + os.Getenv("USER") + "/.kube/config"}
+				for _, c := range candidates {
+					if _, statErr := os.Stat(c); statErr == nil {
+						kubeconfig = c
+						break
+					}
+				}
+			} else {
+				kubeconfig = filepath.Join(home, ".kube", "config")
+			}
+		}
+		if kubeconfig == "" {
+			log.Printf("Warning: K8s not available, cluster features disabled: kubeconfig not found")
+			available = false
+			return
 		}
 		restConfig, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 		if err != nil {

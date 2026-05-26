@@ -18,7 +18,21 @@
           <el-tag v-for="ns in row.namespaces" :key="ns" size="small" style="margin: 2px">{{ ns }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="user_count" label="用户数" width="80" />
+      <el-table-column label="用户列表" min-width="200">
+        <template #default="{ row }">
+          <el-tag
+            v-for="u in (row.users || [])"
+            :key="u.user_id"
+            :type="u.permission === 'readwrite' ? '' : 'info'"
+            size="small"
+            style="margin: 2px"
+          >
+            {{ u.display_name || u.username }}
+            <span style="font-size: 11px; opacity: 0.7">({{ u.permission === 'readwrite' ? '读写' : '只读' }})</span>
+          </el-tag>
+          <span v-if="!row.users || row.users.length === 0" style="color: #999">暂无用户</span>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="250" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="showDialog(row)">编辑</el-button>
@@ -42,7 +56,7 @@
     />
 
     <!-- 新建/编辑项目 -->
-    <el-dialog v-model="dialogVisible" :title="editingProject ? '编辑项目' : '新建项目'" width="600px">
+    <el-dialog v-model="dialogVisible" :title="editingProject ? '编辑项目' : '新建项目'" width="700px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="项目名称" prop="name">
           <el-input v-model="form.name" />
@@ -55,6 +69,21 @@
             <el-option v-for="ns in allNamespaces" :key="ns" :label="ns" :value="ns" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="!editingProject" label="分配用户">
+          <div style="width: 100%">
+            <div v-for="(item, index) in form.users" :key="index" style="display: flex; gap: 8px; margin-bottom: 8px">
+              <el-select v-model="item.user_id" filterable placeholder="选择用户" style="flex: 1">
+                <el-option v-for="u in allUsers" :key="u.id" :label="`${u.username} (${u.display_name || '-'})`" :value="u.id" />
+              </el-select>
+              <el-select v-model="item.permission" style="width: 120px">
+                <el-option label="只读" value="read" />
+                <el-option label="读写" value="readwrite" />
+              </el-select>
+              <el-button type="danger" icon="Delete" @click="form.users.splice(index, 1)" circle />
+            </div>
+            <el-button type="primary" icon="Plus" size="small" @click="form.users.push({ user_id: null, permission: 'read' })">添加用户</el-button>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -66,7 +95,7 @@
     <el-dialog v-model="userDialogVisible" title="分配用户" width="600px">
       <div style="margin-bottom: 16px; display: flex; gap: 8px">
         <el-select v-model="assignForm.user_id" filterable placeholder="选择用户" style="flex: 1">
-          <el-option v-for="u in allUsers" :key="u.id" :label="`${u.username} (${u.display_name})`" :value="u.id" />
+          <el-option v-for="u in allUsers" :key="u.id" :label="`${u.username} (${u.display_name || '-'})`" :value="u.id" />
         </el-select>
         <el-select v-model="assignForm.permission" style="width: 120px">
           <el-option label="只读" value="read" />
@@ -116,7 +145,7 @@ const allUsers = ref([])
 const dialogVisible = ref(false)
 const editingProject = ref(null)
 const formRef = ref(null)
-const form = reactive({ name: '', description: '', namespaces: [] })
+const form = reactive({ name: '', description: '', namespaces: [], users: [] })
 const rules = {
   name: [{ required: true, message: '请输入项目名', trigger: 'blur' }],
   namespaces: [{ required: true, type: 'array', min: 1, message: '请选择命名空间', trigger: 'change' }],
@@ -153,9 +182,9 @@ async function loadData() {
 function showDialog(project) {
   editingProject.value = project || null
   if (project) {
-    Object.assign(form, { name: project.name, description: project.description, namespaces: project.namespaces || [] })
+    Object.assign(form, { name: project.name, description: project.description, namespaces: project.namespaces || [], users: [] })
   } else {
-    Object.assign(form, { name: '', description: '', namespaces: [] })
+    Object.assign(form, { name: '', description: '', namespaces: [], users: [] })
   }
   dialogVisible.value = true
 }
@@ -166,9 +195,15 @@ async function handleSubmit() {
   submitLoading.value = true
   try {
     if (editingProject.value) {
-      await updateProject(editingProject.value.id, form)
+      await updateProject(editingProject.value.id, { name: form.name, description: form.description, namespaces: form.namespaces })
     } else {
-      await createProject(form)
+      const data = { name: form.name, description: form.description, namespaces: form.namespaces }
+      // 过滤掉未选择用户的行
+      const validUsers = form.users.filter(u => u.user_id)
+      if (validUsers.length > 0) {
+        data.users = validUsers
+      }
+      await createProject(data)
     }
     ElMessage.success(editingProject.value ? '更新成功' : '创建成功')
     dialogVisible.value = false

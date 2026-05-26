@@ -14,11 +14,11 @@
       <el-table-column prop="username" label="用户名" width="120" />
       <el-table-column prop="display_name" label="姓名" width="120" />
       <el-table-column prop="email" label="邮箱" />
-      <el-table-column prop="role" label="角色" width="100">
+      <el-table-column prop="remark" label="备注" />
+      <el-table-column prop="role" label="管理员" width="80">
         <template #default="{ row }">
-          <el-tag :type="{ admin: 'danger', developer: '', global_viewer: 'info' }[row.role]" size="small">
-            {{ { admin: '管理员', developer: '开发者', global_viewer: '只读' }[row.role] }}
-          </el-tag>
+          <el-tag v-if="row.role === 'admin'" type="danger" size="small">是</el-tag>
+          <el-tag v-else type="info" size="small">否</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="status" label="状态" width="80">
@@ -71,12 +71,11 @@
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="form.email" />
         </el-form-item>
-        <el-form-item label="角色" prop="role">
-          <el-select v-model="form.role" style="width: 100%">
-            <el-option label="只读" value="global_viewer" />
-            <el-option label="开发者" value="developer" />
-            <el-option label="管理员" value="admin" />
-          </el-select>
+        <el-form-item label="备注">
+          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="请输入备注信息" />
+        </el-form-item>
+        <el-form-item label="管理员">
+          <el-switch v-model="form.is_admin" />
         </el-form-item>
         <el-form-item v-if="editingUser" label="状态">
           <el-select v-model="form.status" style="width: 100%">
@@ -120,7 +119,7 @@ const query = reactive({ page: 1, page_size: 20, keyword: '' })
 const dialogVisible = ref(false)
 const editingUser = ref(null)
 const formRef = ref(null)
-const form = reactive({ username: '', password: '', display_name: '', email: '', role: 'global_viewer', status: 'active' })
+const form = reactive({ username: '', password: '', display_name: '', email: '', remark: '', is_admin: false, status: 'active' })
 
 const resetVisible = ref(false)
 const resetFormRef = ref(null)
@@ -130,7 +129,7 @@ const resetUserId = ref(null)
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }, { min: 8, message: '密码至少8位', trigger: 'blur' }],
-  role: [{ required: true, message: '请选择角色', trigger: 'change' }],
+  display_name: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
 }
 const resetRules = {
   new_password: [{ required: true, message: '请输入新密码', trigger: 'blur' }, { min: 8, message: '密码至少8位', trigger: 'blur' }],
@@ -152,9 +151,9 @@ async function loadData() {
 function showDialog(user) {
   editingUser.value = user || null
   if (user) {
-    Object.assign(form, { username: user.username, password: '', display_name: user.display_name, email: user.email, role: user.role, status: user.status })
+    Object.assign(form, { username: user.username, password: '', display_name: user.display_name, email: user.email, remark: user.remark || '', is_admin: user.role === 'admin', status: user.status })
   } else {
-    Object.assign(form, { username: '', password: '', display_name: '', email: '', role: 'global_viewer', status: 'active' })
+    Object.assign(form, { username: '', password: '', display_name: '', email: '', remark: '', is_admin: false, status: 'active' })
   }
   dialogVisible.value = true
 }
@@ -171,7 +170,7 @@ async function handleSubmit() {
   submitLoading.value = true
   try {
     if (editingUser.value) {
-      await updateUser(editingUser.value.id, { display_name: form.display_name, email: form.email, role: form.role, status: form.status })
+      await updateUser(editingUser.value.id, { display_name: form.display_name, email: form.email, remark: form.remark, is_admin: form.is_admin, status: form.status })
     } else {
       await createUser(form)
     }

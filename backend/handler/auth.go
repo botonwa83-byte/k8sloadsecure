@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"k8sgate/config"
@@ -10,6 +11,24 @@ import (
 	"k8sgate/pkg"
 	"k8sgate/service"
 )
+
+// getRealIP 从请求中获取真实客户端IP
+func getRealIP(c *gin.Context) string {
+	// 优先从 X-Forwarded-For 获取
+	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		ip := strings.TrimSpace(parts[0])
+		if ip != "" {
+			return ip
+		}
+	}
+	// 其次从 X-Real-IP 获取
+	if xri := c.GetHeader("X-Real-IP"); xri != "" {
+		return xri
+	}
+	// 最后使用 Gin 默认方法
+	return c.ClientIP()
+}
 
 type AuthHandler struct {
 	cfg *config.Config
@@ -26,7 +45,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	user, token, err := service.Login(&req, c.ClientIP(), h.cfg.PasswordMaxAge)
+	user, token, err := service.Login(&req, getRealIP(c), h.cfg.PasswordMaxAge)
 	if err != nil {
 		pkg.Fail(c, http.StatusUnauthorized, 40101, err.Error())
 		return

@@ -51,7 +51,7 @@ async function handleLogin() {
       ElMessage.warning('密码已过期，请修改密码')
       router.push('/change-password')
     } else {
-      router.push('/dashboard')
+      router.push('/overview')
     }
   } catch (e) {
     // error handled by interceptor

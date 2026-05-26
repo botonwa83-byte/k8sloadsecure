@@ -11,6 +11,21 @@ import (
 	"k8sgate/model"
 )
 
+// getRealClientIP 从请求中获取真实客户端IP
+func getRealClientIP(c *gin.Context) string {
+	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		ip := strings.TrimSpace(parts[0])
+		if ip != "" {
+			return ip
+		}
+	}
+	if xri := c.GetHeader("X-Real-IP"); xri != "" {
+		return xri
+	}
+	return c.ClientIP()
+}
+
 var auditChan = make(chan model.AuditLog, 1000)
 
 // auditCache 用于去重，避免短时间内重复记录相同操作
@@ -193,7 +208,7 @@ func AuditLog() gin.HandlerFunc {
 			Namespace:    namespace,
 			RequestPath:  path,
 			StatusCode:   c.Writer.Status(),
-			ClientIP:     c.ClientIP(),
+			ClientIP:     getRealClientIP(c),
 			Detail:       detail,
 			CreatedAt:    time.Now(),
 		}

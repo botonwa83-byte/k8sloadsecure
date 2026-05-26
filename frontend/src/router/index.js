@@ -14,10 +14,10 @@ const routes = [
   {
     path: '/',
     component: () => import('../views/Layout.vue'),
-    redirect: '/dashboard',
+    redirect: '/overview',
     children: [
       {
-        path: 'dashboard',
+        path: 'overview',
         name: 'Dashboard',
         component: () => import('../views/Dashboard.vue'),
         meta: { title: '集群概览' },
@@ -27,6 +27,12 @@ const routes = [
         name: 'K8sDashboard',
         component: () => import('../views/K8sDashboard.vue'),
         meta: { title: 'K8s Dashboard' },
+      },
+      {
+        path: 'my-permissions',
+        name: 'MyPermissions',
+        component: () => import('../views/MyPermissions.vue'),
+        meta: { title: '我的权限' },
       },
       {
         path: 'users',
@@ -64,12 +70,6 @@ const routes = [
         component: () => import('../views/GlobalStats.vue'),
         meta: { title: '全局统计', admin: true },
       },
-      {
-        path: 'roles',
-        name: 'RoleManage',
-        component: () => import('../views/RoleManage.vue'),
-        meta: { title: '角色管理', admin: true },
-      },
     ],
   },
 ]
@@ -88,7 +88,7 @@ router.beforeEach((to, from, next) => {
     if (to.meta.admin) {
       const userObj = JSON.parse(user)
       if (userObj.role !== 'admin') {
-        return next('/dashboard')
+        return next('/overview')
       }
     }
   }

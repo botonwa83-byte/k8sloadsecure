@@ -29,7 +29,6 @@ func InitDB(dsn string) {
 	err = DB.AutoMigrate(
 		&User{}, &Project{}, &ProjectNamespace{}, &UserProject{},
 		&AuditLog{}, &LoginLog{}, &PermissionRequest{},
-		&Role{}, &RolePermission{}, &UserRole{},
 	)
 	if err != nil {
 		log.Fatalf("failed to auto migrate: %v", err)

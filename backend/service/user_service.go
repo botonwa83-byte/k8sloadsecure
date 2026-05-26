@@ -11,15 +11,17 @@ import (
 type CreateUserRequest struct {
 	Username    string `json:"username" binding:"required"`
 	Password    string `json:"password" binding:"required"`
-	DisplayName string `json:"display_name"`
+	DisplayName string `json:"display_name" binding:"required"`
 	Email       string `json:"email"`
-	Role        string `json:"role" binding:"required,oneof=developer global_viewer admin"`
+	Remark      string `json:"remark"`
+	IsAdmin     bool   `json:"is_admin"`
 }
 
 type UpdateUserRequest struct {
 	DisplayName *string `json:"display_name"`
 	Email       *string `json:"email"`
-	Role        *string `json:"role" binding:"omitempty,oneof=developer global_viewer admin"`
+	Remark      *string `json:"remark"`
+	IsAdmin     *bool   `json:"is_admin"`
 	Status      *string `json:"status" binding:"omitempty,oneof=active disabled"`
 }
 
@@ -27,7 +29,6 @@ type UserListQuery struct {
 	Page     int    `form:"page,default=1"`
 	PageSize int    `form:"page_size,default=20"`
 	Keyword  string `form:"keyword"`
-	Role     string `form:"role"`
 	Status   string `form:"status"`
 }
 
@@ -36,15 +37,23 @@ func CreateUser(req *CreateUserRequest, passwordMaxAge int) (*model.User, error)
 		return nil, err
 	}
 
+	// 检查是否存在同名的活跃用户
 	var count int64
 	model.DB.Model(&model.User{}).Where("username = ?", req.Username).Count(&count)
 	if count > 0 {
 		return nil, errors.New("用户名已存在")
 	}
+	// 清理同名的软删除记录，避免唯一索引冲突
+	model.DB.Unscoped().Where("username = ? AND deleted_at IS NOT NULL", req.Username).Delete(&model.User{})
 
 	hash, err := pkg.HashPassword(req.Password)
 	if err != nil {
 		return nil, errors.New("密码加密失败")
+	}
+
+	role := "developer"
+	if req.IsAdmin {
+		role = "admin"
 	}
 
 	now := time.Now()
@@ -54,7 +63,8 @@ func CreateUser(req *CreateUserRequest, passwordMaxAge int) (*model.User, error)
 		PasswordHash:      hash,
 		DisplayName:       req.DisplayName,
 		Email:             req.Email,
-		Role:              req.Role,
+		Role:              role,
+		Remark:            req.Remark,
 		Status:            "active",
 		PasswordChangedAt: &now,
 		PasswordExpiresAt: &expiresAt,
@@ -74,9 +84,6 @@ func GetUserList(q *UserListQuery) (int64, []model.User, error) {
 	if q.Keyword != "" {
 		like := "%" + q.Keyword + "%"
 		db = db.Where("username LIKE ? OR display_name LIKE ? OR email LIKE ?", like, like, like)
-	}
-	if q.Role != "" {
-		db = db.Where("role = ?", q.Role)
 	}
 	if q.Status != "" {
 		db = db.Where("status = ?", q.Status)
@@ -105,8 +112,15 @@ func UpdateUser(id uint, req *UpdateUserRequest) error {
 	if req.Email != nil {
 		updates["email"] = *req.Email
 	}
-	if req.Role != nil {
-		updates["role"] = *req.Role
+	if req.Remark != nil {
+		updates["remark"] = *req.Remark
+	}
+	if req.IsAdmin != nil {
+		if *req.IsAdmin {
+			updates["role"] = "admin"
+		} else {
+			updates["role"] = "developer"
+		}
 	}
 	if req.Status != nil {
 		updates["status"] = *req.Status
